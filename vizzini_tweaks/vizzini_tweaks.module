@@ -1,0 +1,102 @@
+<?php
+
+use Drupal\views\ViewExecutable;
+
+/**
+ * Check if the provided view has vizzini settings.
+ *
+ * @param ViewExecutable $view
+ * @param array &$options
+ *  optionally pass in a variable to capture the other available options.
+ *
+ * @return bool
+ */
+function vizzini_tweaks_view_settings($view, &$options = []) {
+  if (
+    !!($extenders = $view->getDisplay()->getExtenders())
+    && (array_key_exists('vizzini_display_extender', $extenders))
+    && !empty($extenders['vizzini_display_extender']->options)
+  ) {
+    $options = $extenders['vizzini_display_extender']->options;
+    return TRUE;
+  }
+  return FALSE;
+}
+
+function vizzini_tweaks_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+  if ('views_exposed_form' == $form_id) {
+    $view = $form_state->get('view');
+
+    if (
+      vizzini_tweaks_view_settings($view, $options)
+      && !empty($options['subtitle'])
+    ) {
+      $form['vizinni_subtitle'] = [
+        '#weight' => -1000,
+        '#type' => 'markup',
+        '#markup' => '<h2>' . $options['subtitle'] . '</h2>'
+      ];
+    }
+
+  }
+}
+
+/**
+ * Implements hook_views_pre_render()
+ *
+ * Move the "results" block (with the "record N of N of NNN" verbiage) out of
+ * the header and into the space between the exposed filters and the query
+ * results.
+ *
+ * @param ViewExecutable $view
+ *
+ * @return void
+ */
+function vizzini_tweaks_views_pre_render(ViewExecutable $view) {
+
+  if (
+    !vizzini_tweaks_view_settings($view, $options)
+    || empty($options['move_result'])
+    || !($handler = $view->display_handler->getHandler('header', 'result'))
+  ) {
+    return;
+  }
+
+
+  // Render the "result" block content with a custom wrapper around it (as it
+  // renders without a wrapper by default).
+  $handler->options['content'] =
+    '<div class="results-header">'
+    . $handler->options['content']
+    . '</div>';
+  $render = $handler->render();
+
+  // Content in "attachment_before" renders between the exposed form and the
+  // query results.
+  $view->attachment_before[] = $render;
+
+  // Re-render the "result" block with no content so that it will display
+  // nothing in the header area.
+  $handler->options['content'] = '';
+  $handler->render();
+
+}
+
+/**
+ * Implements hook_views_pre_view().
+ *
+ * Suppress headers selected for suppression in the vizzini views.
+ */
+function vizzini_tweaks_views_pre_view(ViewExecutable $view, $display_id, array &$args) {
+  if (
+    !empty($view->getExposedInput())
+    && vizzini_tweaks_view_settings($view, $options)
+    && !empty($options['suppress_headers'])
+    && is_array($options['suppress_headers'])
+    && !!($suppress = array_filter($options['suppress_headers']))
+  ) {
+    foreach ($suppress as $sup) {
+      $view->removeHandler($display_id, 'header', $sup);
+    }
+  }
+}
