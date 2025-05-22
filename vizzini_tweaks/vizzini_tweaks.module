@@ -6,13 +6,16 @@ use Drupal\views\ViewExecutable;
  * Check if the provided view has vizzini settings.
  *
  * @param ViewExecutable $view
+ *   The view to check for vizzini settings.
  * @param array &$options
- *  optionally pass in a variable to capture the other available options.
+ *   Optionally pass in a variable to capture the other available options.
  *
  * @return bool
+ *   TRUE if the view has vizzini settings, FALSE otherwise.
  */
 function vizzini_tweaks_view_settings($view, &$options = []) {
   if (
+    // Double negation !! converts the result to a boolean, ensuring we have extenders
     !!($extenders = $view->getDisplay()->getExtenders())
     && (array_key_exists('vizzini_display_extender', $extenders))
     && !empty($extenders['vizzini_display_extender']->options)
@@ -23,6 +26,18 @@ function vizzini_tweaks_view_settings($view, &$options = []) {
   return FALSE;
 }
 
+/**
+ * Implements hook_form_alter().
+ *
+ * Adds a subtitle to views exposed forms if configured in vizzini settings.
+ *
+ * @param array $form
+ *   The form array to be altered.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The current state of the form.
+ * @param string $form_id
+ *   The form ID.
+ */
 function vizzini_tweaks_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
   if ('views_exposed_form' == $form_id) {
     $view = $form_state->get('view');
@@ -31,13 +46,13 @@ function vizzini_tweaks_form_alter(&$form, \Drupal\Core\Form\FormStateInterface 
       vizzini_tweaks_view_settings($view, $options)
       && !empty($options['subtitle'])
     ) {
+      // Adding subtitle with extremely negative weight to ensure it appears at the top
       $form['vizinni_subtitle'] = [
         '#weight' => -1000,
         '#type' => 'markup',
         '#markup' => '<h2>' . $options['subtitle'] . '</h2>'
       ];
     }
-
   }
 }
 
@@ -49,11 +64,11 @@ function vizzini_tweaks_form_alter(&$form, \Drupal\Core\Form\FormStateInterface 
  * results.
  *
  * @param ViewExecutable $view
+ *   The view being rendered.
  *
  * @return void
  */
 function vizzini_tweaks_views_pre_render(ViewExecutable $view) {
-
   if (
     !vizzini_tweaks_view_settings($view, $options)
     || empty($options['move_result'])
@@ -62,9 +77,9 @@ function vizzini_tweaks_views_pre_render(ViewExecutable $view) {
     return;
   }
 
-
-  // Render the "result" block content with a custom wrapper around it (as it
-  // renders without a wrapper by default).
+  // Render the "result" block content with a custom wrapper around it.
+  // We add a wrapper div because the default result handler doesn't include
+  // any container elements, making it difficult to style consistently.
   $handler->options['content'] =
     '<div class="results-header">'
     . $handler->options['content']
@@ -76,16 +91,24 @@ function vizzini_tweaks_views_pre_render(ViewExecutable $view) {
   $view->attachment_before[] = $render;
 
   // Re-render the "result" block with no content so that it will display
-  // nothing in the header area.
+  // nothing in the header area. This effectively moves the content rather than
+  // duplicating it.
   $handler->options['content'] = '';
   $handler->render();
-
 }
 
 /**
  * Implements hook_views_pre_view().
  *
- * Suppress headers selected for suppression in the vizzini views.
+ * Suppresses specific headers in views based on vizzini settings.
+ * Only applies when exposed filters have been submitted.
+ *
+ * @param ViewExecutable $view
+ *   The view that is going to be processed.
+ * @param string $display_id
+ *   The ID of the display that is going to be rendered.
+ * @param array $args
+ *   The arguments passed to the view.
  */
 function vizzini_tweaks_views_pre_view(ViewExecutable $view, $display_id, array &$args) {
   if (
@@ -93,6 +116,7 @@ function vizzini_tweaks_views_pre_view(ViewExecutable $view, $display_id, array 
     && vizzini_tweaks_view_settings($view, $options)
     && !empty($options['suppress_headers'])
     && is_array($options['suppress_headers'])
+    // Only proceed if there are actually headers to suppress after filtering
     && !!($suppress = array_filter($options['suppress_headers']))
   ) {
     foreach ($suppress as $sup) {

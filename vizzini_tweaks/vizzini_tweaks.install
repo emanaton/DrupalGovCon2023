@@ -2,34 +2,52 @@
 
 /**
  * @file
- * Various install/uninstall hooks for the Metatag Views module.
+ * Various install/uninstall hooks for the Vizzini Tweaks module.
  */
 
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 
 /**
  * Implements hook_install().
+ *
+ * Enables the vizzini_display_extender plugin for Views on module installation.
+ * This allows Vizzini settings to be applied to Views without requiring manual
+ * configuration steps.
  */
 function vizzini_tweaks_install() {
-  // Enable hrsa_display_extender plugin.
+  // Enable vizzini_display_extender plugin.
+  // We modify the global Views settings to ensure our extender is available
+  // to all views without requiring users to manually enable it.
   $config = \Drupal::service('config.factory')->getEditable('views.settings');
   $display_extenders = $config->get('display_extenders') ?: [];
-  $display_extenders[] = 'vizzini_display_extender';
-  $config->set('display_extenders', $display_extenders);
-  $config->save();
+
+  // Only add the extender if it doesn't already exist
+  if (!in_array('vizzini_display_extender', $display_extenders)) {
+    $display_extenders[] = 'vizzini_display_extender';
+    $config->set('display_extenders', $display_extenders);
+    $config->save();
+  }
 }
 
 /**
  * Implements hook_uninstall().
+ *
+ * Disables the vizzini_display_extender plugin for Views when the module
+ * is uninstalled. This ensures we don't leave behind configuration that
+ * references functionality no longer available.
  */
 function vizzini_tweaks_uninstall() {
-  // Disable hrsa_display_extender plugin.
+  // Disable vizzini_display_extender plugin.
+  // We clean up the Views settings to remove our extender when the module
+  // is uninstalled to prevent errors from missing functionality.
   $config = \Drupal::service('config.factory')->getEditable('views.settings');
   $display_extenders = $config->get('display_extenders') ?: [];
 
   $key = array_search('vizzini_display_extender', $display_extenders);
   if ($key !== FALSE) {
+    // Remove our extender from the array while preserving other extenders
     unset($display_extenders[$key]);
+    // Save the modified extenders list back to config
     $config->set('display_extenders', $display_extenders);
     $config->save();
   }
